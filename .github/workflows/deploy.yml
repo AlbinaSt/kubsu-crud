@@ -1,24 +1,67 @@
-name: Deploy
+name: CI/CD
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
+  build-and-push:
+    runs-on: self-hosted
+    outputs:
+      sha: ${{ steps.set-sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASS }}
-          script: |
-            cd /home/<username>/project/
-            git pull
-            docker compose down
-            docker compose up --build -d
+      - name: Set image SHA
+        id: set-sha
+        run: echo "::set-output name=sha::${GITHUB_SHA}"
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GHCR_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push test image
+        run: |
+          IMAGE_TEST=ghcr.io/kirehwye/python-app:test-${{ github.sha }}
+          podman build --target test -t $IMAGE_TEST .
+          podman push $IMAGE_TEST
+
+      - name: Build and push runtime image
+        run: |
+          IMAGE_RUNTIME=ghcr.io/kirehwye/python-app:runtime-${{ github.sha }}
+          podman build --target runtime -t $IMAGE_RUNTIME .
+          podman push $IMAGE_RUNTIME
+
+  test:
+    runs-on: self-hosted
+    needs: build-and-push
+    steps:
+      - name: Run tests locally
+        run: |
+          set -e
+          IMAGE_TEST=ghcr.io/kirehwye/python-app:test-${{ github.sha }}
+          podman login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GHCR_TOKEN }}"
+          podman run --rm --name python-app-test --network host $IMAGE_TEST python -m pytest -v tests
+          podman rmi $IMAGE_TEST || true
+
+  deploy:
+    runs-on: self-hosted
+    needs: test
+    steps:
+      - name: Deploy runtime image locally
+        run: |
+          set -e
+
+          IMAGE_RUNTIME=ghcr.io/kirehwye/python-app:runtime-${{ github.sha }}
+
+          podman login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GHCR_TOKEN }}"
+
+          podman stop python-app || true
+          podman rm -f python-app || true
+
+          podman run --replace -d --name python-app --network host -p 8064:8064 $IMAGE_RUNTIME
+
+          podman images --format "{{.Repository}}:{{.Tag}}" \
+            | grep 'python-app:runtime-' \
+            | grep -v "${{ github.sha }}" \
+            | xargs -r podman rmi -f || true
