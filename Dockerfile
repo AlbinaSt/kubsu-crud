@@ -1,27 +1,14 @@
-# ---- Stage 1: Builder ----
-FROM python:3.12-slim AS builder
+# Stage 1: test
+FROM python:3.11-slim AS test
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential
-
 COPY pyproject.toml .
+COPY src/ ./src
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -e .[test]
 
-RUN pip install --upgrade pip
-RUN pip install .[test]
-
-COPY src ./src
-COPY tests ./tests
-
-# ---- Stage 2: Runtime ----
-FROM python:3.12-slim
+# Stage 2: runtime
+FROM python:3.11-slim AS runtime
 WORKDIR /app
-
-COPY --from=builder /usr/local /usr/local
-
-COPY pyproject.toml .
-COPY src ./src
-
-EXPOSE 8000
-
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8055"]
-
+COPY --from=test /app /app
+EXPOSE 8064
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8064"]
