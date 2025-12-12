@@ -22,13 +22,13 @@ jobs:
 
       - name: Build and push test image
         run: |
-          IMAGE_TEST=ghcr.io/AlbinaSt/python-app:test-${{ github.sha }}
+          IMAGE_TEST=ghcr.io/albinast/python-app:test-${{ github.sha }}
           podman build --target test -t $IMAGE_TEST .
           podman push $IMAGE_TEST
 
       - name: Build and push runtime image
         run: |
-          IMAGE_RUNTIME=ghcr.io/AlbinaSt/python-app:runtime-${{ github.sha }}
+          IMAGE_RUNTIME=ghcr.io/albinast/python-app:runtime-${{ github.sha }}
           podman build --target runtime -t $IMAGE_RUNTIME .
           podman push $IMAGE_RUNTIME
 
@@ -39,7 +39,7 @@ jobs:
       - name: Run tests locally
         run: |
           set -e
-          IMAGE_TEST=ghcr.io/AlbinaSt/python-app:test-${{ github.sha }}
+          IMAGE_TEST=ghcr.io/albinast/python-app:test-${{ github.sha }}
           podman login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GHCR_TOKEN }}"
           podman run --rm --name python-app-test --network host $IMAGE_TEST python -m pytest -v tests
           podman rmi $IMAGE_TEST || true
@@ -52,7 +52,7 @@ jobs:
         run: |
           set -e
 
-          IMAGE_RUNTIME=ghcr.io/AlbinaSt/python-app:runtime-${{ github.sha }}
+          IMAGE_RUNTIME=ghcr.io/albinast/python-app:runtime-${{ github.sha }}
 
           podman login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GHCR_TOKEN }}"
 
